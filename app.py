@@ -5,8 +5,8 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# Load the trained scikit-learn LogisticRegression model from file
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.pkl")
+# Load the logistic model from the current directory
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "logistic.pkl")
 
 try:
     with open(MODEL_PATH, "rb") as f:
@@ -19,8 +19,7 @@ except Exception as e:
 @app.route("/")
 def home():
     return jsonify(
-        status="success",
-        message="Logistic Regression Model API is running on Render!",
+        status="success", message="Logistic Regression Model API is running on Vercel!"
     )
 
 
@@ -29,23 +28,37 @@ def predict():
     if model is None:
         return jsonify(error="Model file could not be loaded on startup."), 500
 
-    data = request.get_json(force=True)
-
-    # Expected features based on your model metadata:
-    # [attendance, study_hours, past_failures, assignments_completed_pct,
-    #  parental_education, family_income, extracurricular, internet_access,
-    #  previous_grade, final_score]
     try:
-        features = data.get("features")
-        if not features or len(features) != 10:
+        data = request.get_json(force=True)
+
+        # Allow passing key-value JSON or an ordered array of 10 values
+        if "features" in data and isinstance(data["features"], list):
+            feature_values = data["features"]
+        else:
+            # Match strict feature order from the pickle metadata
+            feature_names = [
+                "attendance",
+                "study_hours",
+                "past_failures",
+                "assignments_completed_pct",
+                "parental_education",
+                "family_income",
+                "extracurricular",
+                "internet_access",
+                "previous_grade",
+                "final_score",
+            ]
+            feature_values = [data.get(name) for name in feature_names]
+
+        if len(feature_values) != 10 or any(v is None for v in feature_values):
             return (
                 jsonify(
-                    error="Expected a 'features' array with exactly 10 numeric values."
+                    error="Expected 10 numeric inputs matching features: attendance, study_hours, past_failures, assignments_completed_pct, parental_education, family_income, extracurricular, internet_access, previous_grade, final_score."
                 ),
                 400,
             )
 
-        input_data = np.array(features).reshape(1, -1)
+        input_data = np.array(feature_values, dtype=float).reshape(1, -1)
         prediction = model.predict(input_data)[0]
 
         return jsonify(prediction=str(prediction))
